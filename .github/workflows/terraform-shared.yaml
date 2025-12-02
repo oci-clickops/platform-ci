@@ -83,17 +83,3 @@ jobs:
               repo: context.repo.repo,
               body: output
             });
-
-      - name: Apply changes
-        if: ${{ github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged == true }}
-        working-directory: ${{ github.workspace }}/ORCH
-        run: |
-          CONFIG_DIR="${{ github.workspace }}/${{ steps.terraform.outputs.config_subpath }}"
-          VAR_FILES=$(find "$CONFIG_DIR" -name '*.json' -exec echo -n "-var-file {} " \;)
-
-          EXTRA_VARS=""
-          if [ "${{ inputs.cloud }}" = "oci" ]; then
-            EXTRA_VARS="-var=region=$DETECTED_REGION -var=tenancy_ocid=dummy -var=user_ocid=dummy -var=fingerprint=dummy -var=private_key_path=dummy -var=private_key_password=dummy"
-          fi
-
-          terraform apply -auto-approve $EXTRA_VARS $VAR_FILES

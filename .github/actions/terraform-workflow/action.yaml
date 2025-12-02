@@ -136,3 +136,25 @@ runs:
         name: ${{ inputs.cloud }}-terraform-plan
         path: ${{ github.workspace }}/ORCH/tfplan.binary
         if-no-files-found: ignore
+
+    # Apply: Run only when mode is apply
+    - name: Terraform apply
+      if: ${{ inputs.mode == 'apply' }}
+      shell: bash
+      working-directory: ${{ github.workspace }}/ORCH
+      run: |
+        # Find all JSON config files
+        CONFIG_DIR="${{ github.workspace }}/${{ steps.backend.outputs.config_subpath }}"
+        VAR_FILES=$(find "$CONFIG_DIR" -name '*.json' -exec echo -n "-var-file {} " \;)
+
+        # Extra vars for OCI
+        EXTRA_VARS=""
+        if [ "${{ inputs.cloud }}" = "oci" ]; then
+          EXTRA_VARS="-var=region=$DETECTED_REGION -var=tenancy_ocid=dummy -var=user_ocid=dummy -var=fingerprint=dummy -var=private_key_path=dummy -var=private_key_password=dummy"
+        fi
+
+        # Run apply
+        echo "🚀 Applying Terraform changes..."
+        terraform apply -auto-approve -no-color $EXTRA_VARS $VAR_FILES
+
+        echo "✅ Apply completed successfully"

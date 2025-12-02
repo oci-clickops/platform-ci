@@ -103,19 +103,19 @@ def test_replace_placeholders():
 
 def test_discover_backend():
     """
-    Test that discover_backend.py parses repository names correctly
+    Test that discover_backend.py extracts repository names correctly
     """
-    print("Testing discover_backend.py repository name parsing...")
+    print("Testing discover_backend.py repository name extraction...")
 
     # Import the function we want to test
     sys.path.insert(0, os.path.dirname(__file__))
     from discover_backend import get_repository_name
 
     test_cases = [
-        ("oci-clickops/oe-env-project-template", "project"),
-        ("oci-clickops/oe-env-myapp", "myapp"),
-        ("oci-clickops/oe-env-my-new-app", "my-new-app"),
-        ("owner/oe-env-test", "test"),
+        ("oci-clickops/oci-prod-ProjectDGC", "oci-prod-ProjectDGC"),
+        ("oci-clickops/oe-env-project-template", "oe-env-project-template"),
+        ("oci-clickops/myapp", "myapp"),
+        ("owner/test-bucket", "test-bucket"),
     ]
 
     all_passed = True
@@ -134,10 +134,10 @@ def test_discover_backend():
             all_passed = False
 
     if all_passed:
-        print("✅ Repository name parsing works!")
+        print("✅ Repository name extraction works!")
         return True
     else:
-        print("❌ Repository name parsing failed!")
+        print("❌ Repository name extraction failed!")
         return False
 
 

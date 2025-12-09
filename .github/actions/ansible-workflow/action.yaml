@@ -73,6 +73,16 @@ runs:
           echo "✅ OCI uses Instance Principal (automatic)"
         fi
 
+    # Get OCI namespace for Object Storage operations
+    - name: Set OCI namespace
+      if: ${{ inputs.cloud == 'oci' }}
+      shell: bash
+      run: |
+        echo "🔍 Getting OCI Object Storage namespace..."
+        NAMESPACE=$(oci os ns get --query data --raw-output)
+        echo "STATE_NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
+        echo "✅ OCI namespace set: $NAMESPACE"
+
     # Generate dynamic inventory from Terraform state
     - name: Generate dynamic inventory
       id: inventory

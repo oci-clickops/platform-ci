@@ -44,7 +44,7 @@ runs:
           netaddr
 
         # Install OCI Ansible collection
-        ansible-galaxy collection install oracle.oci:5.0.0
+        ansible-galaxy collection install oracle.oci:5.5.0
 
         echo "✅ Ansible environment ready"
 

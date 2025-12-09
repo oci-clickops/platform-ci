@@ -1,29 +1,44 @@
 ---
-# Master playbook - routes to specific operations via tags
-- name: Ansible Day-2 Operations Master Playbook
-  hosts: all
-  gather_facts: false
-
-  pre_tasks:
-    - name: Display operation banner
-      run_once: true
-      delegate_to: localhost
-      ansible.builtin.debug:
-        msg: |
-          ========================================
-          Ansible GitOps Day-2 Operations
-          ========================================
-          Operation Type: {{ operation_type | default('unknown') }}
-          Targets: {{ ansible_play_hosts | length }}
-          ========================================
-      tags: always
-
-# ADB Lifecycle Operations
-- name: ADB Lifecycle Management
+- name: ADB Lifecycle
   hosts: adb_instances
   gather_facts: false
-  tags: ["adb-lifecycle"]
-  roles:
-    - role: adb-lifecycle
-# VM Agent Installation - REMOVED for MVP scope
-# VM Configuration Updates - REMOVED for MVP scope
+  tags: [adb-lifecycle]
+
+  tasks:
+    - name: Get current state
+      oracle.oci.oci_database_autonomous_database_facts:
+        autonomous_database_id: "{{ oci_ocid }}"
+      register: adb_state
+      delegate_to: localhost
+
+    - name: Start ADB
+      oracle.oci.oci_database_autonomous_database_actions:
+        autonomous_database_id: "{{ oci_ocid }}"
+        action: start
+        wait: "{{ wait_for_state | default(true) }}"
+        wait_timeout: "{{ (timeout_minutes | default(30)) * 60 }}"
+      delegate_to: localhost
+      when:
+        - action == 'start'
+        - adb_state.autonomous_databases[0].lifecycle_state != 'AVAILABLE'
+      register: start_result
+
+    - name: Stop ADB
+      oracle.oci.oci_database_autonomous_database_actions:
+        autonomous_database_id: "{{ oci_ocid }}"
+        action: stop
+        wait: "{{ wait_for_state | default(true) }}"
+        wait_timeout: "{{ (timeout_minutes | default(30)) * 60 }}"
+      delegate_to: localhost
+      when:
+        - action == 'stop'
+        - adb_state.autonomous_databases[0].lifecycle_state == 'AVAILABLE'
+      register: stop_result
+
+    - name: Show result
+      debug:
+        msg: >-
+          {{ inventory_hostname }}:
+          {% if start_result.changed | default(false) %}started
+          {% elif stop_result.changed | default(false) %}stopped
+          {% else %}already in desired state{% endif %}

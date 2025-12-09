@@ -1,0 +1,40 @@
+{
+    "name": "Deploy Agent",
+    "description": "Install monitoring/management agent on VM instances",
+    "workflow": "oci-ansible-gitops.yaml",
+    "auto_approve": false,
+    "status": "not_implemented",
+    "parameters": {
+        "agent_type": {
+            "label": "Agent Type",
+            "type": "choice",
+            "options": [
+                "oci-management-agent",
+                "oci-logging-agent",
+                "prometheus-node-exporter",
+                "custom"
+            ],
+            "required": true
+        },
+        "agent_version": {
+            "label": "Agent Version",
+            "type": "string",
+            "default": "latest"
+        },
+        "target_instances": {
+            "label": "Target Instances",
+            "type": "choice",
+            "options": [
+                "all",
+                "tagged",
+                "specific"
+            ],
+            "default": "all"
+        },
+        "instance_tag": {
+            "label": "Instance Tag (if tagged)",
+            "type": "string",
+            "required": false
+        }
+    }
+}

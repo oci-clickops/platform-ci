@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       runner_labels:
-        description: 'Runner labels as JSON array, e.g. ["self-hosted","oci"]'
+        description: "Runner labels as JSON array"
         required: false
         type: string
         default: '["self-hosted","oci"]'
@@ -28,45 +28,212 @@ on:
 jobs:
   terraform:
     name: "Terraform ${{ inputs.mode }}"
-    # Runner selection (self-hosted + oci by default)
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
-
-    # Concurrency per cloud (oci / azure)
     concurrency:
       group: ${{ inputs.cloud }}-terraform
       cancel-in-progress: false
 
     steps:
-      - name: Checkout repo
+      # =====================================================================
+      # Setup
+      # =====================================================================
+      - name: Checkout manifest repo
         uses: actions/checkout@v6
 
+      - name: Checkout orchestrator
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.orchestrator_repo }}
+          path: ORCH
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.1
+          terraform_wrapper: true
+
       - name: Setup OCI CLI
-        if: ${{ inputs.cloud == 'oci' }}
+        if: inputs.cloud == 'oci'
         uses: oracle-actions/configure-oci-cli@v1.3.2
         with:
           config_auth: instance_principal
 
-      - name: Run Terraform
-        id: terraform
-        uses: oci-clickops/platform-ci/.github/actions/terraform-workflow@main
-        with:
-          cloud: ${{ inputs.cloud }}
-          mode: ${{ inputs.mode }}
-          orchestrator-repo: ${{ inputs.orchestrator_repo }}
-          bucket-name: ${{ inputs.bucket_name }}
+      # =====================================================================
+      # Discover region
+      # =====================================================================
+      - name: Discover region
+        id: discover
+        shell: bash
+        run: |
+          REGION_DIR=$(ls -d ${{ inputs.cloud }}/*/ 2>/dev/null | head -1)
+          if [ -z "$REGION_DIR" ]; then
+            echo "❌ No region folder found in ${{ inputs.cloud }}/"
+            exit 1
+          fi
 
-      - name: Comment plan on PR
-        if: ${{ inputs.mode == 'pr' && github.event.pull_request }}
+          REGION=$(basename "$REGION_DIR")
+          CONFIG_SUBPATH="${{ inputs.cloud }}/$REGION"
+          STATE_KEY="${{ inputs.bucket_name }}/$CONFIG_SUBPATH/terraform.tfstate"
+
+          echo "config_subpath=$CONFIG_SUBPATH" >> $GITHUB_OUTPUT
+          echo "DETECTED_REGION=$REGION" >> $GITHUB_ENV
+          echo "STATE_KEY=$STATE_KEY" >> $GITHUB_ENV
+          echo "BUCKET_NAME=${{ inputs.bucket_name }}" >> $GITHUB_ENV
+          echo "✅ Region: $REGION"
+
+      # =====================================================================
+      # Auth & Backend
+      # =====================================================================
+      - name: Authenticate Azure
+        if: inputs.cloud == 'azure'
+        shell: bash
+        run: |
+          az login --service-principal \
+            --username "$ARM_CLIENT_ID" \
+            --password "$ARM_CLIENT_SECRET" \
+            --tenant "$ARM_TENANT_ID"
+          az account set --subscription "$ARM_SUBSCRIPTION_ID"
+
+      - name: Generate providers.tf
+        shell: bash
+        run: |
+          # Get OCI namespace
+          if [ "${{ inputs.cloud }}" = "oci" ]; then
+            NAMESPACE=$(oci os ns get --query data --raw-output)
+          else
+            NAMESPACE="$STATE_NAMESPACE"
+          fi
+
+          # Write providers.tf
+          if [ "${{ inputs.cloud }}" = "oci" ]; then
+            cat > ORCH/providers.tf << EOF
+          provider "oci" {
+            auth   = "InstancePrincipal"
+            region = var.region
+            ignore_defined_tags = ["Oracle-Tags.CreatedBy", "Oracle-Tags.CreatedOn"]
+          }
+          provider "oci" {
+            auth   = "InstancePrincipal"
+            alias  = "home"
+            region = var.region
+            ignore_defined_tags = ["Oracle-Tags.CreatedBy", "Oracle-Tags.CreatedOn"]
+          }
+          provider "oci" {
+            auth   = "InstancePrincipal"
+            alias  = "secondary_region"
+            region = var.region
+            ignore_defined_tags = ["Oracle-Tags.CreatedBy", "Oracle-Tags.CreatedOn"]
+          }
+          terraform {
+            required_version = ">= 1.12.0"
+            required_providers {
+              oci = { source = "oracle/oci", configuration_aliases = [oci.home] }
+            }
+            backend "oci" {
+              bucket    = "$BUCKET_NAME"
+              key       = "$STATE_KEY"
+              namespace = "$NAMESPACE"
+              auth      = "InstancePrincipal"
+              region    = "$DETECTED_REGION"
+            }
+          }
+          EOF
+          else
+            cat > ORCH/providers.tf << EOF
+          provider "azurerm" { features {} }
+          terraform {
+            required_version = ">= 1.12.0"
+            required_providers {
+              azurerm = { source = "hashicorp/azurerm", version = "~> 3.0" }
+            }
+            backend "oci" {
+              bucket    = "$BUCKET_NAME"
+              key       = "$STATE_KEY"
+              namespace = "$NAMESPACE"
+              auth      = "InstancePrincipal"
+              region    = "$DETECTED_REGION"
+            }
+          }
+          EOF
+          fi
+
+          terraform -chdir=ORCH fmt providers.tf
+          echo "✅ Generated providers.tf"
+
+      # =====================================================================
+      # Terraform
+      # =====================================================================
+      - name: Terraform init
+        shell: bash
+        run: terraform -chdir=ORCH init
+
+      - name: Terraform fmt
+        id: format
+        if: inputs.mode == 'pr'
+        shell: bash
+        run: terraform -chdir=ORCH fmt -check
+
+      - name: Terraform validate
+        id: validate
+        if: inputs.mode == 'pr'
+        shell: bash
+        run: terraform -chdir=ORCH validate -no-color
+
+      - name: Prepare variables
+        id: vars
+        shell: bash
+        run: |
+          CONFIG_DIR="${{ github.workspace }}/${{ steps.discover.outputs.config_subpath }}"
+          VAR_FILES=$(find "$CONFIG_DIR" -name '*.json' -printf '-var-file %p ')
+          echo "var_files=$VAR_FILES" >> $GITHUB_OUTPUT
+
+          EXTRA=""
+          if [ "${{ inputs.cloud }}" = "oci" ]; then
+            EXTRA="-var=region=$DETECTED_REGION -var=tenancy_ocid=dummy -var=user_ocid=dummy"
+            EXTRA="$EXTRA -var=fingerprint=dummy -var=private_key_path=dummy -var=private_key_password=dummy"
+          fi
+          echo "extra=$EXTRA" >> $GITHUB_OUTPUT
+
+      - name: Terraform plan
+        id: plan
+        shell: bash
+        working-directory: ORCH
+        run: |
+          terraform plan -detailed-exitcode -no-color \
+            ${{ steps.vars.outputs.extra }} ${{ steps.vars.outputs.var_files }} \
+            -out=tfplan.binary 2>&1 | tee plan.txt || EXIT=$?
+
+          echo "plan_output<<EOF" >> $GITHUB_OUTPUT
+          cat plan.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "exit_code=${EXIT:-0}" >> $GITHUB_OUTPUT
+
+      - name: Terraform apply
+        if: inputs.mode == 'apply'
+        shell: bash
+        run: |
+          terraform -chdir=ORCH apply -auto-approve -no-color \
+            ${{ steps.vars.outputs.extra }} ${{ steps.vars.outputs.var_files }}
+          echo "✅ Apply completed"
+
+      # =====================================================================
+      # PR Comment
+      # =====================================================================
+      - name: Comment on PR
+        if: inputs.mode == 'pr' && github.event.pull_request
         uses: actions/github-script@v8
         env:
-          PLAN: ${{ steps.terraform.outputs.plan_output }}
+          PLAN: ${{ steps.plan.outputs.plan_output }}
         with:
           script: |
-            const output = `#### Terraform Results
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `#### Terraform Plan
 
-            **Format:** \`${{ steps.terraform.outputs.format_outcome }}\`
-            **Validate:** \`${{ steps.terraform.outputs.validate_outcome }}\`
-            **Plan:** \`${{ steps.terraform.outcome }}\`
+            **Format:** \`${{ steps.format.outcome }}\`
+            **Validate:** \`${{ steps.validate.outcome }}\`
 
             <details><summary>Show Plan</summary>
 
@@ -76,11 +243,5 @@ jobs:
 
             </details>
 
-            *By @${{ github.actor }}*`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
+            *By @${{ github.actor }}*`
             });

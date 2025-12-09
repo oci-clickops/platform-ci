@@ -105,27 +105,6 @@ runs:
           "${{ steps.discover.outputs.config_subpath }}" \
           "${{ inputs.operation-file }}"
 
-    # Load existing Ansible state
-    - name: Load Ansible state
-      id: load_state
-      shell: bash
-      run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_state.py" load \
-          "${{ inputs.cloud }}" \
-          "${{ inputs.bucket-name }}" \
-          "${{ steps.discover.outputs.state_key }}"
-
-    # Pre-checks: Validate before execution
-    - name: Run pre-checks
-      id: precheck
-      shell: bash
-      run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_precheck.py" \
-          "${{ inputs.cloud }}" \
-          "${{ inputs.operation-file }}" \
-          "$WORK_TEMP/inventory.json" \
-          "$WORK_TEMP/ansible-state.json"
-
     # Check mode: Dry-run (like terraform plan)
     - name: Ansible check (dry-run)
       id: check
@@ -183,15 +162,3 @@ runs:
         cat $WORK_TEMP/ansible-execute.log
 
         echo "✅ Ansible execution completed"
-
-    # Update state file in OCI bucket
-    - name: Update Ansible state
-      if: ${{ inputs.mode == 'execute' && steps.execute.outcome == 'success' }}
-      shell: bash
-      run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_state.py" update \
-          "${{ inputs.cloud }}" \
-          "${{ inputs.bucket-name }}" \
-          "${{ steps.discover.outputs.state_key }}" \
-          "$WORK_TEMP/ansible-state.json" \
-          "${{ github.workspace }}/${{ inputs.operation-file }}"

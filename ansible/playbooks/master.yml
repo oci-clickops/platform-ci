@@ -22,24 +22,8 @@
 - name: ADB Lifecycle Management
   hosts: adb_instances
   gather_facts: false
-  tags: ['adb-lifecycle']
+  tags: ["adb-lifecycle"]
   roles:
     - role: adb-lifecycle
-
-# VM Agent Installation
-- name: VM Agent Installation
-  hosts: compute_instances
-  gather_facts: true
-  tags: ['vm-agent-install']
-  roles:
-    - role: vm-agent-install
-
-# VM Configuration Updates
-- name: VM Configuration Updates
-  hosts: compute_instances
-  gather_facts: true
-  tags: ['vm-config-update']
-  tasks:
-    - name: Placeholder for VM configuration updates
-      ansible.builtin.debug:
-        msg: "VM configuration update tasks will be defined here"
+# VM Agent Installation - REMOVED for MVP scope
+# VM Configuration Updates - REMOVED for MVP scope

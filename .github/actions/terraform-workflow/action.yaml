@@ -49,7 +49,7 @@ runs:
     - name: Find backend config
       id: backend
       shell: bash
-      run: python3 "${{ github.action_path }}/../../scripts_python/discover_backend.py" "${{ inputs.cloud }}" "${{ inputs.bucket-name }}"
+      run: python3 "${{ github.action_path }}/../../../scripts_python/discover_backend.py" "${{ inputs.cloud }}" "${{ inputs.bucket-name }}"
 
     # Configure: Auth and backend
     - name: Authenticate to cloud
@@ -68,11 +68,11 @@ runs:
 
     - name: Setup backend config
       shell: bash
-      run: python3 "${{ github.action_path }}/../../scripts_python/setup_backend.py" "${{ inputs.cloud }}" "${{ github.workspace }}"
+      run: python3 "${{ github.action_path }}/../../../scripts_python/setup_backend.py" "${{ inputs.cloud }}" "${{ github.workspace }}"
 
     - name: Replace config placeholders
       shell: bash
-      run: python3 "${{ github.action_path }}/../../scripts_python/replace_placeholders.py" "${{ inputs.cloud }}" "${{ github.workspace }}/${{ steps.backend.outputs.config_subpath }}"
+      run: python3 "${{ github.action_path }}/../../../scripts_python/replace_placeholders.py" "${{ inputs.cloud }}" "${{ github.workspace }}/${{ steps.backend.outputs.config_subpath }}"
 
     # Terraform: Init and validate
     - name: Terraform init
@@ -116,7 +116,7 @@ runs:
         terraform plan -detailed-exitcode -no-color $EXTRA_VARS $VAR_FILES -out=tfplan.binary > plan_raw.txt 2>&1 || PLAN_EXIT=$?
 
         # Sanitize output
-        SANITIZED=$(python3 "${{ github.action_path }}/../../scripts_python/sanitize_plan.py" "${{ inputs.cloud }}" "$(cat plan_raw.txt)")
+        SANITIZED=$(python3 "${{ github.action_path }}/../../../scripts_python/sanitize_plan.py" "${{ inputs.cloud }}" "$(cat plan_raw.txt)")
 
         # Save outputs
         echo "plan_output<<EOF" >> $GITHUB_OUTPUT

@@ -12,8 +12,8 @@ on:
         required: true
         type: string
       operation_file:
-        description: "Path to operation JSON file"
-        required: true
+        description: "Path to operation JSON file (auto-detected if not provided)"
+        required: false
         type: string
       bucket_name:
         description: "Bucket name for state files"
@@ -38,6 +38,53 @@ jobs:
     steps:
       - name: Checkout manifest repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup work directory
+        shell: bash
+        run: |
+          # Create work temp directory
+          WORK_TEMP="${{ runner.temp }}/ansible-work"
+          mkdir -p "$WORK_TEMP"
+          echo "WORK_TEMP=$WORK_TEMP" >> $GITHUB_ENV
+          echo "Work directory: $WORK_TEMP"
+
+      - name: Detect changed operation file
+        id: detect
+        if: ${{ inputs.operation_file == '' }}
+        shell: bash
+        run: |
+          echo "Looking for changed Ansible files..."
+
+          # Step 1: Find what files changed
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # In a PR: compare PR branch with main branch
+            git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} > $WORK_TEMP/changed_files.txt
+
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # In a push: compare current commit with previous commit
+            git diff --name-only ${{ github.event.before }} ${{ github.event.after }} > $WORK_TEMP/changed_files.txt
+
+          else
+            # Manual run: find all ansible files
+            find ${{ inputs.cloud }} -path '*/ansible/*.json' -type f > $WORK_TEMP/changed_files.txt
+          fi
+
+          # Step 2: Filter only ansible operation files
+          cat $WORK_TEMP/changed_files.txt | grep '${{ inputs.cloud }}' | grep 'ansible' | grep '.json' > $WORK_TEMP/ansible_files.txt || true
+
+          # Step 3: Check if we found any files
+          if [ ! -s $WORK_TEMP/ansible_files.txt ]; then
+            echo "ERROR: No Ansible operation files found"
+            exit 1
+          fi
+
+          # Step 4: Take the first file
+          OPERATION_FILE=$(head -n 1 $WORK_TEMP/ansible_files.txt)
+
+          echo "Found operation file: $OPERATION_FILE"
+          echo "operation_file=$OPERATION_FILE" >> $GITHUB_OUTPUT
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -51,7 +98,7 @@ jobs:
         with:
           cloud: ${{ inputs.cloud }}
           mode: ${{ inputs.mode }}
-          operation-file: ${{ inputs.operation_file }}
+          operation-file: ${{ inputs.operation_file || steps.detect.outputs.operation_file }}
           bucket-name: ${{ inputs.bucket_name }}
 
       - name: Comment check results on PR
@@ -91,7 +138,7 @@ jobs:
         with:
           name: ${{ inputs.cloud }}-ansible-logs-${{ github.run_number }}
           path: |
-            /tmp/ansible-*.log
-            /tmp/inventory*.json
-            /tmp/ansible-state*.json
+            ${{ env.WORK_TEMP }}/ansible-*.log
+            ${{ env.WORK_TEMP }}/inventory*.json
+            ${{ env.WORK_TEMP }}/ansible-state*.json
           if-no-files-found: ignore

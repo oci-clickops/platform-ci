@@ -33,6 +33,17 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # Setup work directory (should already be set by shared workflow, but ensure it exists)
+    - name: Ensure work directory exists
+      shell: bash
+      run: |
+        if [ -z "$WORK_TEMP" ]; then
+          WORK_TEMP="${{ runner.temp }}/ansible-work"
+          mkdir -p "$WORK_TEMP"
+          echo "WORK_TEMP=$WORK_TEMP" >> $GITHUB_ENV
+        fi
+        echo "Work directory: $WORK_TEMP"
+
     # Setup: Install dependencies
     - name: Install Ansible and dependencies
       shell: bash
@@ -53,7 +64,7 @@ runs:
       id: discover
       shell: bash
       run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_discover_operation.py" \
+        python3 "${{ github.action_path }}/../../../scripts_python/discover.py" ansible \
           "${{ inputs.cloud }}" \
           "${{ github.workspace }}/${{ inputs.operation-file }}" \
           "${{ inputs.bucket-name }}"
@@ -99,7 +110,7 @@ runs:
       id: load_state
       shell: bash
       run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_load_state.py" \
+        python3 "${{ github.action_path }}/../../../scripts_python/ansible_state.py" load \
           "${{ inputs.cloud }}" \
           "${{ inputs.bucket-name }}" \
           "${{ steps.discover.outputs.state_key }}"
@@ -112,8 +123,8 @@ runs:
         python3 "${{ github.action_path }}/../../../scripts_python/ansible_precheck.py" \
           "${{ inputs.cloud }}" \
           "${{ inputs.operation-file }}" \
-          "/tmp/inventory.json" \
-          "/tmp/ansible-state.json"
+          "$WORK_TEMP/inventory.json" \
+          "$WORK_TEMP/ansible-state.json"
 
     # Check mode: Dry-run (like terraform plan)
     - name: Ansible check (dry-run)
@@ -128,20 +139,20 @@ runs:
         echo "🔍 Running Ansible in check mode (dry-run)..."
 
         ansible-playbook \
-          -i /tmp/inventory.json \
+          -i $WORK_TEMP/inventory.json \
           --check \
           --diff \
           -e "@${{ github.workspace }}/${{ inputs.operation-file }}" \
-          -e "ansible_state_file=/tmp/ansible-state.json" \
+          -e "ansible_state_file=$WORK_TEMP/ansible-state.json" \
           playbooks/master.yml \
           --tags "$OPERATION_TYPE" \
-          > /tmp/ansible-check.log 2>&1 || CHECK_EXIT=$?
+          > $WORK_TEMP/ansible-check.log 2>&1 || CHECK_EXIT=$?
 
         # Display output
-        cat /tmp/ansible-check.log
+        cat $WORK_TEMP/ansible-check.log
 
         # Save sanitized output for PR comment
-        CHECK_OUTPUT=$(cat /tmp/ansible-check.log | head -100)
+        CHECK_OUTPUT=$(cat $WORK_TEMP/ansible-check.log | head -100)
 
         echo "check_output<<EOF" >> $GITHUB_OUTPUT
         echo "$CHECK_OUTPUT" >> $GITHUB_OUTPUT
@@ -161,15 +172,15 @@ runs:
         echo "🚀 Executing Ansible operation: $OPERATION_TYPE"
 
         ansible-playbook \
-          -i /tmp/inventory.json \
+          -i $WORK_TEMP/inventory.json \
           -e "@${{ github.workspace }}/${{ inputs.operation-file }}" \
-          -e "ansible_state_file=/tmp/ansible-state.json" \
+          -e "ansible_state_file=$WORK_TEMP/ansible-state.json" \
           playbooks/master.yml \
           --tags "$OPERATION_TYPE" \
-          > /tmp/ansible-execute.log 2>&1
+          > $WORK_TEMP/ansible-execute.log 2>&1
 
         # Display output
-        cat /tmp/ansible-execute.log
+        cat $WORK_TEMP/ansible-execute.log
 
         echo "✅ Ansible execution completed"
 
@@ -178,19 +189,9 @@ runs:
       if: ${{ inputs.mode == 'execute' && steps.execute.outcome == 'success' }}
       shell: bash
       run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_update_state.py" \
+        python3 "${{ github.action_path }}/../../../scripts_python/ansible_state.py" update \
           "${{ inputs.cloud }}" \
           "${{ inputs.bucket-name }}" \
           "${{ steps.discover.outputs.state_key }}" \
-          "/tmp/ansible-state.json" \
+          "$WORK_TEMP/ansible-state.json" \
           "${{ github.workspace }}/${{ inputs.operation-file }}"
-
-    # Update OCI resource tags
-    - name: Update resource tags
-      if: ${{ inputs.mode == 'execute' && steps.execute.outcome == 'success' }}
-      shell: bash
-      run: |
-        python3 "${{ github.action_path }}/../../../scripts_python/ansible_update_tags.py" \
-          "${{ inputs.cloud }}" \
-          "${{ github.workspace }}/${{ inputs.operation-file }}" \
-          "/tmp/inventory.json"

@@ -1,0 +1,27 @@
+---
+# Common task: Send notification
+# Usage: include_tasks: ../common/send-notification.yml
+#
+# Required variables:
+#   - notification_message: Message to send
+# Optional variables:
+#   - slack_webhook: Slack webhook URL (skips if not defined)
+#   - notification_channel: Channel name (default: #ops-alerts)
+
+- name: Send Slack notification
+  uri:
+    url: "{{ slack_webhook }}"
+    method: POST
+    body_format: json
+    body:
+      channel: "{{ notification_channel | default('#ops-alerts') }}"
+      text: "{{ notification_message }}"
+      username: "GitOps Bot"
+      icon_emoji: ":robot_face:"
+  when: slack_webhook is defined
+  delegate_to: localhost
+
+- name: Log notification (fallback)
+  debug:
+    msg: "NOTIFICATION: {{ notification_message }}"
+  when: slack_webhook is not defined

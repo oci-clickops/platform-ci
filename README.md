@@ -54,3 +54,39 @@ operations-catalog/          # APEX UI catalog
 - Self-hosted runner with OCI CLI
 - Terraform >= 1.12.0
 - Python 3.11+
+
+## Environment Variables
+
+These must be configured on the self-hosted runner:
+
+| Variable | Description | Cloud | Sensitive |
+|----------|-------------|-------|-----------|
+| `STATE_NAMESPACE` | OCI Object Storage namespace | OCI | No |
+| `OCI_CLI_AUTH` | Set to `instance_principal` | OCI | No |
+| `TF_VAR_TENANCY_ID` | OCI tenancy OCID | OCI | No |
+| `ARM_CLIENT_ID` | Service Principal client ID | Azure | Yes |
+| `ARM_CLIENT_SECRET` | Service Principal secret | Azure | Yes |
+| `ARM_TENANT_ID` | Azure tenant ID | Azure | No |
+| `ARM_SUBSCRIPTION_ID` | Azure subscription ID | Azure | No |
+
+### Runner Configuration
+
+Configure variables in the Systemd service file (`/etc/systemd/system/actions.runner...service`):
+
+```ini
+[Service]
+# OCI
+Environment="OCI_CLI_AUTH=instance_principal"
+Environment="TF_VAR_TENANCY_ID=ocid1.tenancy.oc1..aaa..."
+Environment="STATE_NAMESPACE=..."
+
+# Azure
+Environment="ARM_SUBSCRIPTION_ID=..."
+Environment="ARM_CLIENT_ID=..."
+Environment="ARM_CLIENT_SECRET=..."
+Environment="ARM_TENANT_ID=..."
+```
+
+Then reload: `systemctl daemon-reload && systemctl restart actions-runner...`
+
+> **Note**: This is more secure than a `.env` file as it is owned by root.

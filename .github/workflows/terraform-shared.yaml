@@ -30,7 +30,7 @@ jobs:
     name: "Terraform ${{ inputs.mode }}"
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     concurrency:
-      group: ${{ inputs.cloud }}-terraform
+      group: ${{ inputs.cloud }}-terraform-${{ github.repository }}
       cancel-in-progress: false
 
     steps:

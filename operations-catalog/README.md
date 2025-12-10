@@ -1,21 +1,21 @@
 # Operations Catalog
 
-Catálogo de operaciones para APEX UI.
+Operations catalog for APEX UI.
 
-## Uso
+## Usage
 
-APEX lee estos JSON para:
+APEX reads these JSON files to:
 
-1. Descubrir operaciones disponibles
-2. Generar formularios dinámicos
-3. Saber qué workflow triggear
+1. Discover available operations
+2. Generate dynamic forms
+3. Determine which workflow to trigger
 
 ## Schema
 
 ```json
 {
-  "name": "Nombre",
-  "description": "Descripción",
+  "name": "Name",
+  "description": "Description",
   "workflow": "workflow-name.yaml",
   "auto_approve": true,
   "parameters": {

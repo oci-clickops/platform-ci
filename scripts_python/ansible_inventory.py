@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Generar inventario dinámico de Ansible desde Terraform state.
-Uso: python3 ansible_inventory.py <cloud> <bucket> <config-path> <operation-file>
+Generate dynamic Ansible inventory from Terraform state.
+Usage: python3 ansible_inventory.py <cloud> <bucket> <config-path> <operation-file>
 """
 
 import os
@@ -11,10 +11,10 @@ from utils import load_json, save_json, get_inventory_path, get_terraform_state_
 
 
 def download_terraform_state(namespace, bucket, config_path):
-    """Descargar terraform.tfstate desde OCI bucket."""
+    """Download terraform.tfstate from OCI bucket."""
     state_key = get_terraform_state_key(bucket, config_path)
 
-    print(f"Cargando Terraform state...")
+    print(f"Loading Terraform state...")
     print(f"   Bucket: {bucket}")
     print(f"   Key: {state_key}")
 
@@ -24,13 +24,13 @@ def download_terraform_state(namespace, bucket, config_path):
         try:
             return json.loads(content)
         except json.JSONDecodeError as e:
-            print(f"❌ JSON inválido en Terraform state: {e}")
+            print(f"❌ Invalid JSON in Terraform state: {e}")
             return None
     return None
 
 
 def parse_adb_resources(state_data):
-    """Extraer ADBs del Terraform state. Retorna dict display_name → info."""
+    """Extract ADBs from Terraform state. Returns dict display_name → info."""
     adb_map = {}
 
     if not state_data:
@@ -55,7 +55,7 @@ def parse_adb_resources(state_data):
 
 
 def build_inventory(manifest, adb_map):
-    """Construir inventario Ansible para recursos ADB."""
+    """Build Ansible inventory for ADB resources."""
     inventory = {
         'all': {'children': {'adb_instances': {}}},
         'adb_instances': {'hosts': {}}
@@ -68,8 +68,8 @@ def build_inventory(manifest, adb_map):
         name = adb_target.get('display_name')
 
         if name not in adb_map:
-            print(f"\n❌ ERROR: No se encontró '{name}' en Terraform state")
-            print(f"Disponibles: {list(adb_map.keys()) or '(ninguno)'}")
+            print(f"\n❌ ERROR: '{name}' not found in Terraform state")
+            print(f"Available: {list(adb_map.keys()) or '(none)'}")
             sys.exit(1)
 
         adb_info = adb_map[name]
@@ -89,33 +89,33 @@ def build_inventory(manifest, adb_map):
 
 def main():
     if len(sys.argv) != 5:
-        print("Uso: ansible_inventory.py <cloud> <bucket> <config-path> <operation-file>")
+        print("Usage: ansible_inventory.py <cloud> <bucket> <config-path> <operation-file>")
         sys.exit(1)
 
     cloud, bucket, config_path, operation_file = sys.argv[1:5]
 
     namespace = os.environ.get('STATE_NAMESPACE')
     if not namespace:
-        print("❌ Variable STATE_NAMESPACE no configurada")
+        print("❌ STATE_NAMESPACE variable not configured")
         sys.exit(1)
 
     if cloud != 'oci':
-        print(f"❌ {cloud} no soportado")
+        print(f"❌ {cloud} not supported")
         sys.exit(1)
 
-    # Descargar y parsear state
+    # Download and parse state
     state_data = download_terraform_state(namespace, bucket, config_path)
     adb_map = parse_adb_resources(state_data)
-    print(f"✅ Encontrados {len(adb_map)} ADBs en Terraform state")
+    print(f"✅ Found {len(adb_map)} ADBs in Terraform state")
 
-    # Construir y guardar inventario
+    # Build and save inventory
     manifest = load_json(operation_file)
     inventory = build_inventory(manifest, adb_map)
 
     inventory_path = get_inventory_path()
     save_json(inventory_path, inventory)
 
-    print(f"✅ Inventario: {len(inventory['adb_instances']['hosts'])} hosts → {inventory_path}")
+    print(f"✅ Inventory: {len(inventory['adb_instances']['hosts'])} hosts → {inventory_path}")
 
 
 if __name__ == "__main__":

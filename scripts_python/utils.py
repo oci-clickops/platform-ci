@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Utilidades para ansible_inventory.py
+Utilities for ansible_inventory.py
 """
 
 import os
@@ -11,39 +11,39 @@ import tempfile
 
 
 def load_json(file_path):
-    """Cargar archivo JSON."""
+    """Load JSON file."""
     try:
         with open(file_path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"❌ Error: Archivo no encontrado: {file_path}")
+        print(f"❌ Error: File not found: {file_path}")
         sys.exit(1)
     except json.JSONDecodeError as e:
-        print(f"❌ Error: JSON inválido en {file_path}: {e}")
+        print(f"❌ Error: Invalid JSON in {file_path}: {e}")
         sys.exit(1)
 
 
 def save_json(file_path, data):
-    """Guardar datos en archivo JSON."""
+    """Save data to JSON file."""
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=2)
 
 
 def get_inventory_path():
-    """Obtener path del archivo de inventario."""
+    """Get inventory file path."""
     work_temp = os.environ.get('WORK_TEMP', '/tmp')
     return os.path.join(work_temp, "inventory.json")
 
 
 def get_terraform_state_key(bucket, config_path):
-    """Construir key del state de Terraform."""
+    """Build Terraform state key."""
     return f"{bucket}/{config_path}/terraform.tfstate"
 
 
 def download_from_bucket(namespace, bucket, object_name):
     """
-    Descargar objeto de OCI Object Storage.
-    Retorna: contenido string o None si no existe.
+    Download object from OCI Object Storage.
+    Returns: string content or None if not found.
     """
     with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp:
         tmp_path = tmp.name
@@ -65,9 +65,9 @@ def download_from_bucket(namespace, bucket, object_name):
         return content
     else:
         if 'NotAuthorizedOrNotFound' in result.stderr or '404' in result.stderr:
-            print(f"ℹ️  Objeto no encontrado: {object_name}")
+            print(f"ℹ️  Object not found: {object_name}")
         else:
-            print(f"❌ Error descargando: {result.stderr}")
+            print(f"❌ Error downloading: {result.stderr}")
 
         if os.path.exists(tmp_path):
             os.remove(tmp_path)

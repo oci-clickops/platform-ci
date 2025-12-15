@@ -15,6 +15,7 @@ jobs:
       region: eu-frankfurt-1
       orchestrator_repo: oci-clickops/clickops-terraform-oci-modules-orchestrator
       bucket_name: clickops-common-bucket
+      # runner_labels: '["self-hosted","oci"]'
 ```
 
 ## Structure
@@ -31,11 +32,10 @@ scripts_python/
 ansible/
 ├── ansible.cfg
 ├── requirements.yml
-└── playbooks/master.yml     # ADB lifecycle operations
-
-operations-catalog/          # APEX UI catalog
-├── adb-lifecycle.json
-└── deploy-agent.json
+└── playbooks/
+    ├── master.yml           # Operation router (tags)
+    ├── common/send-notification.yml
+    └── operations/adb-lifecycle.yml
 ```
 
 ## Workflows
@@ -45,6 +45,81 @@ operations-catalog/          # APEX UI catalog
 | `terraform-shared` | mode, cloud, orchestrator_repo, bucket_name | Terraform GitOps |
 | `ansible-shared` | mode, cloud, operation_file, bucket_name | Ansible Day-2 ops |
 
+## Caller Repo Layout (Expected)
+
+These workflows are designed to be called from a “manifest” repo that contains per-cloud/per-region config.
+
+```
+<your-repo>/
+├── oci/
+│   └── eu-frankfurt-1/
+│       ├── *.json                 # Terraform var-files (JSON)
+│       └── ansible/
+│           └── adb-lifecycle.json # Operation manifest(s)
+└── azure/
+    └── westeurope/
+        └── *.json                 # Terraform var-files (JSON)
+```
+
+## Terraform Workflow (`terraform-shared.yaml`)
+
+**Inputs**
+
+- `mode`: `pr` (plan + PR comment) or `apply` (apply)
+- `cloud`: `oci` or `azure`
+- `region`: config folder name (e.g., `eu-frankfurt-1`, `westeurope`); if omitted, falls back to runner `REGION`, then `STATE_REGION`
+- `orchestrator_repo`: repo containing the Terraform modules/orchestrator (checked out into `ORCH/`)
+- `bucket_name`: OCI Object Storage bucket name used for the Terraform backend
+- `runner_labels` (optional): JSON array for `runs-on` (default: `["self-hosted","oci"]`)
+
+**Config resolution**
+
+- Config directory is resolved as `${cloud}/${region}` (e.g., `oci/eu-frankfurt-1`).
+- All `*.json` files in that directory are passed to Terraform as `-var-file <file>.json`.
+
+**Terraform state object name**
+
+The backend `key` (and the Ansible inventory downloader) uses:
+
+`<bucket_name>/<github.repository>/<cloud>/<region>/terraform.tfstate`
+
+## Ansible Workflow (`ansible-shared.yaml`)
+
+Runs Day-2 operations using Ansible, driven by a JSON “operation manifest”.
+
+**Inputs**
+
+- `mode`: `check` or `execute`
+- `cloud`: currently only `oci` is supported end-to-end (inventory generation rejects `azure`)
+- `operation_file` (optional): path to the operation JSON; if omitted, it is auto-detected from the git diff
+- `bucket_name`: OCI Object Storage bucket used to download Terraform state
+- `runner_labels` (optional): JSON array for `runs-on` (default: `["self-hosted","oci"]`)
+
+**Operation auto-detection**
+
+When `operation_file` is empty, the workflow picks the first changed file matching:
+
+- path contains `${cloud}`
+- path contains `ansible`
+- filename ends with `.json`
+
+Recommended location: `${cloud}/${region}/ansible/<operation>.json`.
+
+**Operation JSON format**
+
+`operation_type` must match the Ansible tag in `ansible/playbooks/master.yml` (e.g., `adb-lifecycle`).
+
+```json
+{
+  "operation_type": "adb-lifecycle",
+  "targets": [
+    { "display_name": "my-adb", "action": "stop", "wait_for_state": true, "timeout_minutes": 30 }
+  ]
+}
+```
+
+Targets are matched against ADB `display_name` values found in Terraform state (`oci_database_autonomous_database` resources).
+
 ## Authentication
 
 - **OCI**: Instance Principal (self-hosted runners)
@@ -52,16 +127,18 @@ operations-catalog/          # APEX UI catalog
 
 ## Requirements
 
-- Self-hosted runner with OCI CLI
+- Linux self-hosted runner (bash + GNU utils)
 - Terraform >= 1.12.0
-- Python 3.11+
+- Python 3.11+ (Ansible workflow installs Ansible via pip)
+- Azure CLI available on the runner when `cloud: azure` is used (`az login` is invoked)
+- OCI Instance Principal available on the runner (both workflows)
 
 ## Regions
 
 - `STATE_REGION` is the **OCI region where the Terraform state bucket lives** (used by both OCI and Azure jobs because the backend is OCI Object Storage).
 - Config selection uses `oci/<region>/...` or `azure/<region>/...` and is controlled by the workflow input `region` (recommended) or runner env `REGION` as a fallback.
 
-## Environment Variables
+## Environment Variables [WORKROUND]
 
 These must be configured on the self-hosted runner:
 
@@ -70,8 +147,7 @@ These must be configured on the self-hosted runner:
 | `STATE_NAMESPACE` | OCI Object Storage namespace | OCI | No |
 | `STATE_REGION` | OCI region where the state bucket lives (required) | OCI/Azure | No |
 | `REGION` | Config region folder name (used if workflow input `region` is omitted) | OCI/Azure | No |
-| `OCI_CLI_AUTH` | Set to `instance_principal` | OCI | No |
-| `TF_VAR_TENANCY_ID` | OCI tenancy OCID | OCI | No |
+| `OCI_CLI_AUTH` | Set to `instance_principal` (needed for `oci os object get` in inventory generation) | OCI | No |
 | `ARM_CLIENT_ID` | Service Principal client ID | Azure | Yes |
 | `ARM_CLIENT_SECRET` | Service Principal secret | Azure | Yes |
 | `ARM_TENANT_ID` | Azure tenant ID | Azure | No |
@@ -85,7 +161,6 @@ Configure variables in the Systemd service file (`/etc/systemd/system/actions.ru
 [Service]
 # OCI
 Environment="OCI_CLI_AUTH=instance_principal"
-Environment="TF_VAR_TENANCY_ID=ocid1.tenancy.oc1..aaa..."
 Environment="STATE_NAMESPACE=..."
 Environment="STATE_REGION=eu-frankfurt-1"
 Environment="REGION=eu-frankfurt-1"  # optional if workflows pass `region`

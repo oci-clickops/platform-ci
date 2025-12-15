@@ -8,7 +8,7 @@ Shared GitOps workflows for multi-cloud infrastructure (OCI + Azure).
 # In your project repo
 jobs:
   terraform:
-    uses: oci-clickops/platform-ci-v2/.github/workflows/terraform-shared.yaml@main
+    uses: oci-clickops/platform-ci/.github/workflows/terraform-shared.yaml@main
     with:
       mode: ${{ github.event_name == 'pull_request' && 'pr' || 'apply' }}
       cloud: oci
@@ -138,7 +138,7 @@ Targets are matched against ADB `display_name` values found in Terraform state (
 - `STATE_REGION` is the **OCI region where the Terraform state bucket lives** (used by both OCI and Azure jobs because the backend is OCI Object Storage).
 - Config selection uses `oci/<region>/...` or `azure/<region>/...` and is controlled by the workflow input `region` (recommended) or runner env `REGION` as a fallback.
 
-## Environment Variables [WORKROUND]
+## Environment Variables [WORKAROUND]
 
 These must be configured on the self-hosted runner:
 

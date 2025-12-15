@@ -37,6 +37,9 @@ def get_inventory_path():
 
 def get_terraform_state_key(bucket, config_path):
     """Build Terraform state key."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if repo:
+        return f"{bucket}/{repo}/{config_path}/terraform.tfstate"
     return f"{bucket}/{config_path}/terraform.tfstate"
 
 

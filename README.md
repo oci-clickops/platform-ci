@@ -12,6 +12,7 @@ jobs:
     with:
       mode: ${{ github.event_name == 'pull_request' && 'pr' || 'apply' }}
       cloud: oci
+      region: eu-frankfurt-1
       orchestrator_repo: oci-clickops/clickops-terraform-oci-modules-orchestrator
       bucket_name: clickops-common-bucket
 ```
@@ -55,6 +56,11 @@ operations-catalog/          # APEX UI catalog
 - Terraform >= 1.12.0
 - Python 3.11+
 
+## Regions
+
+- `STATE_REGION` is the **OCI region where the Terraform state bucket lives** (used by both OCI and Azure jobs because the backend is OCI Object Storage).
+- Config selection uses `oci/<region>/...` or `azure/<region>/...` and is controlled by the workflow input `region` (recommended) or runner env `REGION` as a fallback.
+
 ## Environment Variables
 
 These must be configured on the self-hosted runner:
@@ -62,6 +68,8 @@ These must be configured on the self-hosted runner:
 | Variable | Description | Cloud | Sensitive |
 |----------|-------------|-------|-----------|
 | `STATE_NAMESPACE` | OCI Object Storage namespace | OCI | No |
+| `STATE_REGION` | OCI region where the state bucket lives (required) | OCI/Azure | No |
+| `REGION` | Config region folder name (used if workflow input `region` is omitted) | OCI/Azure | No |
 | `OCI_CLI_AUTH` | Set to `instance_principal` | OCI | No |
 | `TF_VAR_TENANCY_ID` | OCI tenancy OCID | OCI | No |
 | `ARM_CLIENT_ID` | Service Principal client ID | Azure | Yes |
@@ -79,6 +87,8 @@ Configure variables in the Systemd service file (`/etc/systemd/system/actions.ru
 Environment="OCI_CLI_AUTH=instance_principal"
 Environment="TF_VAR_TENANCY_ID=ocid1.tenancy.oc1..aaa..."
 Environment="STATE_NAMESPACE=..."
+Environment="STATE_REGION=eu-frankfurt-1"
+Environment="REGION=eu-frankfurt-1"  # optional if workflows pass `region`
 
 # Azure
 Environment="ARM_SUBSCRIPTION_ID=..."

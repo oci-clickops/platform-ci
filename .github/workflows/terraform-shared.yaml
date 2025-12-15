@@ -11,6 +11,11 @@ on:
         description: "oci or azure"
         required: true
         type: string
+      region:
+        description: "Config region folder name (e.g., eu-frankfurt-1, westeurope). If omitted, REGION (or STATE_REGION) from the runner is used."
+        required: false
+        type: string
+        default: ""
       orchestrator_repo:
         description: "Repository for Terraform modules"
         required: true
@@ -53,27 +58,43 @@ jobs:
           terraform_wrapper: false
 
       # =====================================================================
-      # Discover region
+      # Resolve config
       # =====================================================================
-      - name: Discover region
-        id: discover
+      - name: Resolve config
+        id: config
         shell: bash
         run: |
-          REGION_DIR=$(ls -d ${{ inputs.cloud }}/*/ 2>/dev/null | head -1)
-          if [ -z "$REGION_DIR" ]; then
-            echo "❌ No region folder found in ${{ inputs.cloud }}/"
+          CONFIG_REGION="${{ inputs.region }}"
+          if [ -z "$CONFIG_REGION" ]; then
+            CONFIG_REGION="${REGION:-}"
+          fi
+          if [ -z "$CONFIG_REGION" ]; then
+            CONFIG_REGION="${STATE_REGION:-}"
+            if [ -n "$CONFIG_REGION" ]; then
+              echo "ℹ️  Using STATE_REGION as config region. Set REGION if config differs."
+            fi
+          fi
+
+          if [ -z "$CONFIG_REGION" ]; then
+            echo "❌ Config region not set. Provide workflow input 'region' or set REGION on the runner."
             exit 1
           fi
 
-          REGION=$(basename "$REGION_DIR")
-          CONFIG_SUBPATH="${{ inputs.cloud }}/$REGION"
-          STATE_KEY="${{ inputs.bucket_name }}/$CONFIG_SUBPATH/terraform.tfstate"
+          CONFIG_SUBPATH="${{ inputs.cloud }}/$CONFIG_REGION"
+          if [ ! -d "$CONFIG_SUBPATH" ]; then
+            echo "❌ Config directory not found: $CONFIG_SUBPATH"
+            echo "Available directories under ${{ inputs.cloud }}/:"
+            ls -la "${{ inputs.cloud }}" || true
+            exit 1
+          fi
+
+          STATE_KEY="${{ inputs.bucket_name }}/${{ github.repository }}/$CONFIG_SUBPATH/terraform.tfstate"
 
           echo "config_subpath=$CONFIG_SUBPATH" >> $GITHUB_OUTPUT
-          echo "DETECTED_REGION=$REGION" >> $GITHUB_ENV
+          echo "CONFIG_REGION=$CONFIG_REGION" >> $GITHUB_ENV
           echo "STATE_KEY=$STATE_KEY" >> $GITHUB_ENV
           echo "BUCKET_NAME=${{ inputs.bucket_name }}" >> $GITHUB_ENV
-          echo "✅ Region: $REGION"
+          echo "✅ Config: $CONFIG_SUBPATH"
 
       # =====================================================================
       # Auth & Backend
@@ -93,6 +114,19 @@ jobs:
         run: |
           # Use namespace from runner environment variable
           NAMESPACE="$STATE_NAMESPACE"
+          if [ -z "$NAMESPACE" ]; then
+            echo "❌ STATE_NAMESPACE is not set on the runner"
+            exit 1
+          fi
+
+          # OCI Object Storage buckets are regional. We always take the bucket
+          # region from the runner (STATE_REGION) to avoid coupling it to the
+          # manifest folder name.
+          if [ -z "${STATE_REGION:-}" ]; then
+            echo "❌ STATE_REGION is required (OCI Object Storage bucket region)"
+            exit 1
+          fi
+          BACKEND_REGION="$STATE_REGION"
 
           # Write providers.tf
           if [ "${{ inputs.cloud }}" = "oci" ]; then
@@ -124,7 +158,7 @@ jobs:
               key       = "$STATE_KEY"
               namespace = "$NAMESPACE"
               auth      = "InstancePrincipal"
-              region    = "$DETECTED_REGION"
+              region    = "$BACKEND_REGION"
             }
           }
           EOF
@@ -141,7 +175,7 @@ jobs:
               key       = "$STATE_KEY"
               namespace = "$NAMESPACE"
               auth      = "InstancePrincipal"
-              region    = "$DETECTED_REGION"
+              region    = "$BACKEND_REGION"
             }
           }
           EOF
@@ -173,13 +207,18 @@ jobs:
         id: vars
         shell: bash
         run: |
-          CONFIG_DIR="${{ github.workspace }}/${{ steps.discover.outputs.config_subpath }}"
+          CONFIG_DIR="${{ github.workspace }}/${{ steps.config.outputs.config_subpath }}"
           VAR_FILES=$(find "$CONFIG_DIR" -name '*.json' -printf '-var-file %p ')
           echo "var_files=$VAR_FILES" >> $GITHUB_OUTPUT
 
           EXTRA=""
           if [ "${{ inputs.cloud }}" = "oci" ]; then
-            EXTRA="-var=region=$DETECTED_REGION -var=tenancy_ocid=dummy -var=user_ocid=dummy"
+            if [ -z "${CONFIG_REGION:-}" ]; then
+              echo "❌ CONFIG_REGION missing (set inputs.region or runner REGION)"
+              exit 1
+            fi
+
+            EXTRA="-var=region=$CONFIG_REGION -var=tenancy_ocid=dummy -var=user_ocid=dummy"
             EXTRA="$EXTRA -var=fingerprint=dummy -var=private_key_path=dummy -var=private_key_password=dummy"
           fi
           echo "extra=$EXTRA" >> $GITHUB_OUTPUT
@@ -189,14 +228,20 @@ jobs:
         shell: bash
         working-directory: ORCH
         run: |
+          set -o pipefail
           terraform plan -detailed-exitcode -no-color \
             ${{ steps.vars.outputs.extra }} ${{ steps.vars.outputs.var_files }} \
-            -out=tfplan.binary 2>&1 | tee plan.txt || EXIT=$?
+            -out=tfplan.binary 2>&1 | tee plan.txt
+          EXIT=${PIPESTATUS[0]}
 
           echo "plan_output<<EOF" >> $GITHUB_OUTPUT
           cat plan.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          echo "exit_code=${EXIT:-0}" >> $GITHUB_OUTPUT
+          echo "exit_code=$EXIT" >> $GITHUB_OUTPUT
+
+          if [ "$EXIT" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Terraform apply
         if: inputs.mode == 'apply'

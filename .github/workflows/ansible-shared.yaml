@@ -132,7 +132,7 @@ jobs:
       - name: Checkout platform-ci
         uses: actions/checkout@v6
         with:
-          repository: oci-clickops/platform-ci-v2
+          repository: oci-clickops/platform-ci
           path: platform-ci
 
       - name: Generate inventory

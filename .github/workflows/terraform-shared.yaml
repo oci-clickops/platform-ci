@@ -249,7 +249,7 @@ jobs:
           set -o pipefail
           terraform plan -detailed-exitcode -no-color \
             ${{ steps.vars.outputs.extra }} ${{ steps.vars.outputs.var_files }} \
-            -out=tfplan.binary 2>&1 | tee plan.txt
+            -out=tfplan.binary 2>&1 | tee plan.txt || true
           EXIT=${PIPESTATUS[0]}
 
           echo "plan_output<<EOF" >> $GITHUB_OUTPUT

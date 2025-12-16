@@ -225,7 +225,8 @@ jobs:
         shell: bash
         run: |
           CONFIG_DIR="${{ github.workspace }}/${{ steps.config.outputs.config_subpath }}"
-          VAR_FILES=$(find "$CONFIG_DIR" -name '*.json' -printf '-var-file %p ')
+          # Exclude ansible/ directories - those JSON files are for Ansible, not Terraform
+          VAR_FILES=$(find "$CONFIG_DIR" -name '*.json' -not -path '*/ansible/*' -printf '-var-file %p ')
           echo "var_files=$VAR_FILES" >> $GITHUB_OUTPUT
 
           EXTRA=""

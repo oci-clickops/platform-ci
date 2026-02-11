@@ -5,3 +5,6 @@
 
 - import_playbook: operations/adb-lifecycle.yml
   tags: [adb-lifecycle]
+
+- import_playbook: operations/deploy-agent.yml
+  tags: [deploy-agent]

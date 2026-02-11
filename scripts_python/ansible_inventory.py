@@ -54,6 +54,40 @@ def parse_adb_resources(state_data):
     return adb_map
 
 
+def parse_compute_resources(state_data):
+    """Extract compute instances from Terraform state. Returns dict display_name → info."""
+    compute_map = {}
+
+    if not state_data:
+        return compute_map
+
+    for resource in state_data.get('resources', []):
+        if resource.get('type') != 'oci_core_instance':
+            continue
+
+        for instance in resource.get('instances', []):
+            attrs = instance.get('attributes', {})
+            display_name = attrs.get('display_name', resource.get('name'))
+
+            # Get primary private IP
+            private_ip = None
+            create_details = attrs.get('create_vnic_details', {})
+            if isinstance(create_details, dict):
+                private_ip = create_details.get('private_ip')
+            if not private_ip:
+                private_ip = attrs.get('private_ip')
+
+            compute_map[display_name] = {
+                'ocid': attrs.get('id'),
+                'private_ip': private_ip,
+                'state': attrs.get('state'),
+                'shape': attrs.get('shape'),
+                'freeform_tags': attrs.get('freeform_tags', {})
+            }
+
+    return compute_map
+
+
 def build_inventory(manifest, adb_map):
     """Build Ansible inventory for ADB resources."""
     inventory = {
@@ -87,6 +121,36 @@ def build_inventory(manifest, adb_map):
     return inventory
 
 
+def build_compute_inventory(manifest, compute_map):
+    """Build Ansible inventory for compute instances."""
+    inventory = {
+        'all': {'children': {'compute_instances': {}}},
+        'compute_instances': {'hosts': {}}
+    }
+
+    targets = manifest.get('targets', [])
+
+    for target in targets:
+        name = target.get('display_name')
+
+        if name not in compute_map:
+            print(f"\n❌ ERROR: '{name}' not found in Terraform state")
+            print(f"Available: {list(compute_map.keys()) or '(none)'}")
+            sys.exit(1)
+
+        info = compute_map[name]
+        inventory['compute_instances']['hosts'][name] = {
+            'ansible_host': info['private_ip'],
+            'ansible_connection': 'ssh',
+            'oci_ocid': info['ocid'],
+            'oci_state': info['state'],
+            'agent_type': manifest.get('agent_type', 'unknown'),
+            'agent_version': manifest.get('agent_version', 'latest'),
+        }
+
+    return inventory
+
+
 def main():
     if len(sys.argv) != 5:
         print("Usage: ansible_inventory.py <cloud> <bucket> <config-path> <operation-file>")
@@ -103,19 +167,29 @@ def main():
         print(f"❌ {cloud} not supported")
         sys.exit(1)
 
+    # Load manifest and determine operation type
+    manifest = load_json(operation_file)
+    operation_type = manifest.get('operation_type', 'adb-lifecycle')
+
     # Download and parse state
     state_data = download_terraform_state(namespace, bucket, config_path)
-    adb_map = parse_adb_resources(state_data)
-    print(f"✅ Found {len(adb_map)} ADBs in Terraform state")
 
-    # Build and save inventory
-    manifest = load_json(operation_file)
-    inventory = build_inventory(manifest, adb_map)
+    # Route to the right parser/builder based on operation type
+    if operation_type == 'deploy-agent':
+        compute_map = parse_compute_resources(state_data)
+        print(f"✅ Found {len(compute_map)} compute instances in Terraform state")
+        inventory = build_compute_inventory(manifest, compute_map)
+        host_count = len(inventory['compute_instances']['hosts'])
+    else:
+        adb_map = parse_adb_resources(state_data)
+        print(f"✅ Found {len(adb_map)} ADBs in Terraform state")
+        inventory = build_inventory(manifest, adb_map)
+        host_count = len(inventory['adb_instances']['hosts'])
 
     inventory_path = get_inventory_path()
     save_json(inventory_path, inventory)
 
-    print(f"✅ Inventory: {len(inventory['adb_instances']['hosts'])} hosts → {inventory_path}")
+    print(f"✅ Inventory: {host_count} hosts → {inventory_path}")
 
 
 if __name__ == "__main__":

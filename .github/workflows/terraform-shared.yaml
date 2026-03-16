@@ -188,7 +188,9 @@ jobs:
           EOF
           else
             cat > ORCH/providers.tf << EOF
-          provider "azurerm" { features {} }
+          provider "azurerm" {
+            features {}
+          }
           terraform {
             required_version = ">= 1.12.0"
             required_providers {

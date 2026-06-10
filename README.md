@@ -130,29 +130,11 @@ Targets are matched against ADB `display_name` values found in Terraform state (
 - **OCI**: Instance Principal (self-hosted runners)
 - **Azure**: Service Principal (env vars)
 
-### OCI Credentials File (for IAM resources)
+### OCI Project IAM Boundary
 
-If your project needs to create **IAM resources** (compartments, groups, policies), you must include an `oci-credentials.tfvars.json` file in your config directory with the real `tenancy_ocid`. This follows the same pattern as `oci-clickops-lz`.
+Project repositories should not create OCI IAM foundation resources. Project compartments, groups, and IAM policies are created by `oci-clickops-lz/op04_manage_project` before handoff. Project repos consume the handoff references in workload and NSG manifests.
 
-```json
-{
-    "tenancy_ocid": "ocid1.tenancy.oc1..YOUR_TENANCY_OCID",
-    "user_ocid": "not-used-with-instance-principal",
-    "fingerprint": "not-used-with-instance-principal",
-    "private_key_path": "not-used-with-instance-principal",
-    "private_key_password": ""
-}
-```
-
-**When is this file needed?**
-
-| Resource Type | `oci-credentials.tfvars.json` |
-|---------------|-------------------------------|
-| ADBs, VMs, Networks, Storage | ❌ Not required (Instance Principal handles it) |
-| Compartments, Groups, Policies | ✅ **Required** (needs real `tenancy_ocid`) |
-
-> [!IMPORTANT]
-> If you only deploy databases, compute, or networking resources, you don't need this file. Add it only when creating IAM resources.
+Do not add `oci-credentials.tfvars.json`, `project-iam.json`, or OCI compartment/group/policy manifests to project repositories. For ADB, VM, storage, and project NSG provisioning, Instance Principal authentication on the runner is sufficient.
 
 ## Requirements
 

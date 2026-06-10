@@ -238,9 +238,8 @@ jobs:
               exit 1
             fi
 
-            # Only override region. Other OCI variables (tenancy_ocid, user_ocid, etc.)
-            # should come from oci-credentials.json in the project, following the LZ pattern.
-            # This enables IAM resource creation which requires a real tenancy_ocid.
+            # Only override region. Project repositories should not create OCI IAM
+            # foundation resources; OP04 owns compartments, groups, and policies.
             EXTRA="-var=region=$CONFIG_REGION"
           fi
           echo "extra=$EXTRA" >> $GITHUB_OUTPUT

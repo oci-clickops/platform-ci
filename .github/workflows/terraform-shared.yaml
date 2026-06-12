@@ -8,11 +8,11 @@ on:
         required: true
         type: string
       cloud:
-        description: "oci or azure"
+        description: "oci, azure, or gcp"
         required: true
         type: string
       region:
-        description: "Config region folder name (e.g., eu-frankfurt-1, westeurope). If omitted, REGION (or STATE_REGION) from the runner is used."
+        description: "Config region folder name (e.g., eu-frankfurt-1, westeurope, europe-west2). If omitted, the workflow auto-detects it from changed files or uses REGION from the runner."
         required: false
         type: string
         default: ""
@@ -85,10 +85,10 @@ jobs:
           if [ -z "$CONFIG_REGION" ]; then
             CONFIG_REGION="${REGION:-}"
           fi
-          if [ -z "$CONFIG_REGION" ]; then
+          if [ -z "$CONFIG_REGION" ] && [ "${{ inputs.cloud }}" = "oci" ]; then
             CONFIG_REGION="${STATE_REGION:-}"
             if [ -n "$CONFIG_REGION" ]; then
-              echo "ℹ️  Using STATE_REGION as config region. Set REGION if config differs."
+              echo "ℹ️  Using STATE_REGION as OCI config region. Set REGION if config differs."
             fi
           fi
 
@@ -125,6 +125,28 @@ jobs:
             --password "$ARM_CLIENT_SECRET" \
             --tenant "$ARM_TENANT_ID"
           az account set --subscription "$ARM_SUBSCRIPTION_ID"
+
+      - name: Authenticate Google
+        if: inputs.cloud == 'gcp'
+        shell: bash
+        run: |
+          if [ -n "${GOOGLE_CREDENTIALS:-}" ]; then
+            echo "✅ Using GOOGLE_CREDENTIALS for Google provider authentication"
+            exit 0
+          fi
+
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            echo "✅ Using GOOGLE_APPLICATION_CREDENTIALS for Google provider authentication"
+            exit 0
+          fi
+
+          if command -v gcloud >/dev/null 2>&1 && gcloud auth application-default print-access-token >/dev/null 2>&1; then
+            echo "✅ Using existing Google Application Default Credentials"
+            exit 0
+          fi
+
+          echo "❌ Google authentication is not configured. Set GOOGLE_CREDENTIALS, GOOGLE_APPLICATION_CREDENTIALS, or ADC on the runner."
+          exit 1
 
       - name: Generate providers.tf
         shell: bash
@@ -186,7 +208,7 @@ jobs:
             }
           }
           EOF
-          else
+          elif [ "${{ inputs.cloud }}" = "azure" ]; then
             cat > ORCH/providers.tf << EOF
           provider "azurerm" {
             features {}
@@ -198,6 +220,22 @@ jobs:
             }
           }
           EOF
+          elif [ "${{ inputs.cloud }}" = "gcp" ]; then
+            cat > ORCH/providers.tf << EOF
+          provider "google" {
+            project = var.project_id
+            region  = var.location
+          }
+          terraform {
+            required_version = ">= 1.4.0"
+            required_providers {
+              google = { source = "hashicorp/google", version = ">= 7.35.0, < 8.0.0" }
+            }
+          }
+          EOF
+          else
+            echo "❌ Unsupported cloud: ${{ inputs.cloud }}"
+            exit 1
           fi
 
           terraform -chdir=ORCH fmt providers.tf
@@ -241,6 +279,14 @@ jobs:
             # Only override region. Project repositories should not create OCI IAM
             # foundation resources; OP04 owns compartments, groups, and policies.
             EXTRA="-var=region=$CONFIG_REGION"
+          elif [ "${{ inputs.cloud }}" = "gcp" ]; then
+            if [ -z "${CONFIG_REGION:-}" ]; then
+              echo "❌ CONFIG_REGION missing (set inputs.region or runner REGION)"
+              exit 1
+            fi
+
+            # GCP config folders are Google provider regions such as europe-west2.
+            EXTRA="-var=location=$CONFIG_REGION"
           fi
           echo "extra=$EXTRA" >> $GITHUB_OUTPUT
 

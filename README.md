@@ -1,6 +1,6 @@
 # Platform CI
 
-Shared GitOps workflows for multi-cloud infrastructure (OCI + Azure).
+Shared GitOps workflows for multi-cloud infrastructure (OCI, Azure, and GCP).
 
 ## Quick Start
 
@@ -56,8 +56,11 @@ These workflows are designed to be called from a “manifest” repo that contai
 │       ├── *.json                 # Terraform var-files (JSON)
 │       └── ansible/
 │           └── adb-lifecycle.json # Operation manifest(s)
-└── azure/
-    └── westeurope/
+├── azure/
+│   └── westeurope/
+│       └── *.json                 # Terraform var-files (JSON)
+└── gcp/
+    └── europe-west2/
         └── *.json                 # Terraform var-files (JSON)
 ```
 
@@ -66,8 +69,8 @@ These workflows are designed to be called from a “manifest” repo that contai
 **Inputs**
 
 - `mode`: `pr` (plan + PR comment) or `apply` (apply)
-- `cloud`: `oci` or `azure`
-- `region`: (Optional) Config folder name (e.g., `eu-frankfurt-1`). **If omitted**, the workflow automatically detects it by checking which files changed in the `{cloud}/` directory.
+- `cloud`: `oci`, `azure`, or `gcp`
+- `region`: (Optional) Config folder name (e.g., `eu-frankfurt-1`, `westeurope`, `europe-west2`). **If omitted**, the workflow automatically detects it by checking which files changed in the `{cloud}/` directory.
 - `orchestrator_repo`: repo containing the Terraform modules/orchestrator (checked out into `ORCH/`)
 - `bucket_name`: OCI Object Storage bucket name used for the Terraform backend
 - `runner_labels` (optional): JSON array for `runs-on` (default: `["self-hosted","oci"]`)
@@ -80,7 +83,9 @@ The workflow determines the configuration directory in this order:
 2. **Auto-detection**: Checks `git diff` for changes in `${cloud}/<region>/...`
 3. Runner `REGION` env var
 
-It then resolves to `${cloud}/${region}` (e.g., `oci/eu-frankfurt-1`) and passes all `*.json` files found there to Terraform.
+It then resolves to `${cloud}/${region}` (e.g., `oci/eu-frankfurt-1` or `gcp/europe-west2`) and passes all `*.json` files found there to Terraform.
+
+Terraform does not deep-merge repeated root variables across `-var-file` inputs. Keep aggregated roots in one manifest per region, for example OCI project NSGs in `oci/<region>/network/project-nsgs.json` and Google ADB-S entries in `gcp/<region>/workloads/adb.json`.
 
 **Terraform state object name**
 
@@ -129,6 +134,7 @@ Targets are matched against ADB `display_name` values found in Terraform state (
 
 - **OCI**: Instance Principal (self-hosted runners)
 - **Azure**: Service Principal (env vars)
+- **Google**: Google provider credentials through `GOOGLE_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or Application Default Credentials on the runner
 
 ### OCI Project IAM Boundary
 
@@ -142,15 +148,16 @@ Do not add `oci-credentials.tfvars.json`, `project-iam.json`, or OCI compartment
 - Terraform >= 1.12.0
 - Python 3.11+ (Ansible workflow installs Ansible via pip)
 - Azure CLI available on the runner when `cloud: azure` is used (`az login` is invoked)
-- OCI Instance Principal available on the runner (both workflows)
+- Google provider credentials available on the runner when `cloud: gcp` is used
+- OCI Instance Principal available on the runner for OCI Object Storage state access
 
 ## Regions
 
-- `STATE_REGION` is the **OCI region where the Terraform state bucket lives** (used by both OCI and Azure jobs because the backend is OCI Object Storage).
-- Config selection uses `oci/<region>/...` or `azure/<region>/...` and is controlled by the workflow input `region` (recommended) or runner env `REGION` as a fallback.
+- `STATE_REGION` is the **OCI region where the Terraform state bucket lives** (used by OCI, Azure, and Google jobs because the backend is OCI Object Storage).
+- Config selection uses `oci/<region>/...`, `azure/<region>/...`, or `gcp/<region>/...` and is controlled by path auto-detection, the workflow input `region`, or runner env `REGION`. `STATE_REGION` is used as a legacy OCI-only config-region fallback.
 
 > [!NOTE]
-> **Future Improvement:** Currently `STATE_REGION` must be configured on the runner. For single-region setups (where the state bucket lives in the same region as resources), this could be simplified by defaulting to `CONFIG_REGION` when `STATE_REGION` is not set.
+> **Future Improvement:** Currently `STATE_REGION` must be configured on the runner. For OCI-only single-region setups where the state bucket lives in the same region as resources, this could be simplified by deriving `STATE_REGION` from the OCI config region.
 
 ## Environment Variables [WORKAROUND]
 
@@ -159,13 +166,15 @@ These must be configured on the self-hosted runner:
 | Variable | Description | Cloud | Sensitive |
 |----------|-------------|-------|-----------|
 | `STATE_NAMESPACE` | OCI Object Storage namespace | OCI | No |
-| `STATE_REGION` | OCI region where the state bucket lives (required) | OCI/Azure | No |
-| `REGION` | Config region folder name (used if workflow input `region` is omitted) | OCI/Azure | No |
+| `STATE_REGION` | OCI region where the state bucket lives (required) | OCI/Azure/GCP | No |
+| `REGION` | Config region folder name (used when path auto-detection or workflow input `region` is not available) | OCI/Azure/GCP | No |
 | `OCI_CLI_AUTH` | Set to `instance_principal` (needed for `oci os object get` in inventory generation) | OCI | No |
 | `ARM_CLIENT_ID` | Service Principal client ID | Azure | Yes |
 | `ARM_CLIENT_SECRET` | Service Principal secret | Azure | Yes |
 | `ARM_TENANT_ID` | Azure tenant ID | Azure | No |
 | `ARM_SUBSCRIPTION_ID` | Azure subscription ID | Azure | No |
+| `GOOGLE_CREDENTIALS` | Google service account JSON or workload identity credential JSON | Google | Yes |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to a Google ADC credentials file | Google | Yes |
 
 ### Runner Configuration
 

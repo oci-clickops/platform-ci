@@ -165,17 +165,20 @@ jobs:
         shell: bash
         working-directory: platform-ci/ansible
         run: |
+          set +e
           ansible-playbook \
             -i $WORK_TEMP/inventory.json \
             --check --diff \
             -e "@${{ github.workspace }}/${{ inputs.operation_file || steps.detect.outputs.operation_file }}" \
             playbooks/master.yml \
             --tags "$OPERATION_TYPE" \
-            2>&1 | tee $WORK_TEMP/ansible.log || true
+            2>&1 | tee $WORK_TEMP/ansible.log
+          ANSIBLE_STATUS=${PIPESTATUS[0]}
 
           echo "check_output<<EOF" >> $GITHUB_OUTPUT
           head -100 $WORK_TEMP/ansible.log >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          exit "$ANSIBLE_STATUS"
 
       - name: Ansible execute
         id: execute
@@ -183,14 +186,19 @@ jobs:
         shell: bash
         working-directory: platform-ci/ansible
         run: |
+          set +e
           ansible-playbook \
             -i $WORK_TEMP/inventory.json \
             -e "@${{ github.workspace }}/${{ inputs.operation_file || steps.detect.outputs.operation_file }}" \
             playbooks/master.yml \
             --tags "$OPERATION_TYPE" \
             2>&1 | tee $WORK_TEMP/ansible.log
+          ANSIBLE_STATUS=${PIPESTATUS[0]}
 
-          echo "✅ Execution completed"
+          if [ "$ANSIBLE_STATUS" -eq 0 ]; then
+            echo "✅ Execution completed"
+          fi
+          exit "$ANSIBLE_STATUS"
 
       # =====================================================================
       # PR Comment

@@ -138,7 +138,7 @@ Targets are matched against ADB `display_name` values found in Terraform state (
 
 ### OCI Project IAM Boundary
 
-Project repositories should not create OCI IAM foundation resources. Project compartments, groups, and IAM policies are created by `oci-clickops-lz/op04_manage_project` before handoff. Project repos consume the handoff references in workload and NSG manifests.
+Project repositories should not create OCI IAM foundation resources. Project compartments, groups, and IAM policies are created by `oci-clickops-lz/op04_manage_project` before handoff. Project repos record handoff references in `enviroment_information.txt` and consume those values in workload and NSG manifests.
 
 Do not add `oci-credentials.tfvars.json`, `project-iam.json`, or OCI compartment/group/policy manifests to project repositories. For ADB, VM, storage, and project NSG provisioning, Instance Principal authentication on the runner is sufficient.
 

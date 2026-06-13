@@ -29,10 +29,6 @@ on:
         required: false
         type: string
         default: '["self-hosted","oci"]'
-    secrets:
-      ADB_ADMIN_PASSWORD:
-        description: "Optional ADB admin password used to replace __ADB_ADMIN_PASSWORD__ in prepared var-files"
-        required: false
 
 jobs:
   terraform:
@@ -274,14 +270,10 @@ jobs:
         id: vars
         shell: bash
         env:
-          ADB_ADMIN_PASSWORD: ${{ secrets.ADB_ADMIN_PASSWORD }}
+          GITOPS_SECRET_VALUES: ${{ toJSON(secrets) }}
         run: |
           CONFIG_DIR="${{ github.workspace }}/${{ steps.config.outputs.config_subpath }}"
           PREPARED_VAR_DIR="${{ runner.temp }}/terraform-var-files"
-
-          if [ -n "${ADB_ADMIN_PASSWORD:-}" ]; then
-            echo "::add-mask::$ADB_ADMIN_PASSWORD"
-          fi
 
           # Exclude ansible/ directories - those JSON files are for Ansible,
           # not Terraform. Prepare copies under runner.temp so secret-backed

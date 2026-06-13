@@ -88,11 +88,13 @@ It then resolves to `${cloud}/${region}` (e.g., `oci/eu-frankfurt-1` or `gcp/eur
 
 Terraform does not deep-merge repeated root variables across `-var-file` inputs. Keep aggregated roots in one manifest per region, for example OCI project NSGs in `oci/<region>/network/project-nsgs.json` and Google ADB-S entries in `gcp/<region>/workloads/adb.json`.
 
-**Runtime placeholder substitution**
+**Runtime secret placeholder substitution**
 
-Before Terraform runs, the workflow copies JSON var-files to `${{ runner.temp }}/terraform-var-files`, excludes `ansible/` manifests, and replaces double-underscore placeholders from environment values. The checked-out manifest repository is not modified.
+Before Terraform runs, the workflow copies JSON var-files to `${{ runner.temp }}/terraform-var-files`, excludes `ansible/` manifests, and replaces double-underscore placeholders from environment values or inherited GitHub Actions secrets. The checked-out manifest repository is not modified.
 
-For OCI ADB manifests, set a GitHub Actions secret named `ADB_ADMIN_PASSWORD` in the project repository and keep `admin_password` as `__ADB_ADMIN_PASSWORD__` in Git. Caller workflows must include `secrets: inherit` so the reusable workflow can read the secret. The workflow fails before planning if any unresolved `__PLACEHOLDER__` remains in Terraform var-files.
+For OCI ADB manifests, use one secret placeholder per database when passwords should differ, for example `__ADB_PROD_PROJ1_01_ADMIN_PASSWORD__` in Git and a project-repository secret named `ADB_PROD_PROJ1_01_ADMIN_PASSWORD`. Caller workflows must include `secrets: inherit` so the reusable workflow can read the secret. The workflow fails before planning if any unresolved `__PLACEHOLDER__` remains in Terraform var-files.
+
+Changing a GitHub secret does not rotate an existing OCI ADB password because the ADB module ignores `admin_password` drift after creation. Password rotation should be handled as an explicit Day 2 operation.
 
 **Terraform state object name**
 
@@ -187,7 +189,7 @@ GitHub Actions project-repository secrets:
 
 | Secret | Description | Cloud |
 |--------|-------------|-------|
-| `ADB_ADMIN_PASSWORD` | Replaces `__ADB_ADMIN_PASSWORD__` in prepared Terraform var-files for OCI ADB creation | OCI |
+| `<PLACEHOLDER_NAME>` | Replaces `__<PLACEHOLDER_NAME>__` in prepared Terraform var-files, for example `ADB_PROD_PROJ1_01_ADMIN_PASSWORD` | OCI |
 
 ### Runner Configuration
 

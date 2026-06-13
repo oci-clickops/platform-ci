@@ -85,6 +85,52 @@ class PrepareVarFilesTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("__MISSING_SECRET__", result.stderr)
 
+    def test_substitutes_placeholders_from_secret_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "oci" / "eu-frankfurt-1"
+            config_dir.mkdir(parents=True)
+            output_dir = root / "prepared"
+            (config_dir / "database.json").write_text(
+                json.dumps(
+                    {
+                        "autonomous_databases_configuration": {
+                            "autonomous_databases": {
+                                "ADB-PROD-PROJ1-01-KEY": {
+                                    "admin_password": "__ADB_PROD_PROJ1_01_ADMIN_PASSWORD__"
+                                },
+                                "ADB-PROD-PROJ1-02-KEY": {
+                                    "admin_password": "__ADB_PROD_PROJ1_02_ADMIN_PASSWORD__"
+                                },
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["GITOPS_SECRET_VALUES"] = json.dumps(
+                {
+                    "ADB_PROD_PROJ1_01_ADMIN_PASSWORD": "FirstSecret#2026",
+                    "ADB_PROD_PROJ1_02_ADMIN_PASSWORD": "SecondSecret#2026",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), str(config_dir), str(output_dir)],
+                env=env,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            prepared = json.loads((output_dir / "database.json").read_text(encoding="utf-8"))
+            adbs = prepared["autonomous_databases_configuration"]["autonomous_databases"]
+            self.assertEqual(adbs["ADB-PROD-PROJ1-01-KEY"]["admin_password"], "FirstSecret#2026")
+            self.assertEqual(adbs["ADB-PROD-PROJ1-02-KEY"]["admin_password"], "SecondSecret#2026")
+
 
 if __name__ == "__main__":
     unittest.main()

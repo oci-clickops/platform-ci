@@ -31,12 +31,23 @@ def find_placeholders(value: Any) -> set[str]:
     return set()
 
 
-def replacement_for(token: str) -> Optional[str]:
+def load_secret_values() -> dict[str, str]:
+    raw = os.environ.get("GITOPS_SECRET_VALUES", "{}")
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("GITOPS_SECRET_VALUES must be a JSON object") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("GITOPS_SECRET_VALUES must be a JSON object")
+    return {str(key): str(value) for key, value in decoded.items() if value not in (None, "")}
+
+
+def replacement_for(token: str, secret_values: dict[str, str]) -> Optional[str]:
     env_name = token.strip("_")
     value = os.environ.get(env_name)
     if value == "":
-        return None
-    return value
+        value = None
+    return value if value is not None else secret_values.get(env_name)
 
 
 def replace_string(value: str, replacements: dict[str, str]) -> str:
@@ -67,7 +78,7 @@ def terraform_json_files(config_dir: Path) -> list[Path]:
     )
 
 
-def prepare_file(source: Path, destination: Path) -> None:
+def prepare_file(source: Path, destination: Path, secret_values: dict[str, str]) -> None:
     try:
         data = json.loads(source.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -77,7 +88,7 @@ def prepare_file(source: Path, destination: Path) -> None:
     replacements: dict[str, str] = {}
     missing: list[str] = []
     for token in sorted(placeholders):
-        replacement = replacement_for(token)
+        replacement = replacement_for(token, secret_values)
         if replacement is None:
             missing.append(token)
         else:
@@ -114,9 +125,10 @@ def main() -> int:
 
     prepared_files: list[Path] = []
     try:
+        secret_values = load_secret_values()
         for source in terraform_json_files(config_dir):
             destination = output_dir / source.relative_to(config_dir)
-            prepare_file(source, destination)
+            prepare_file(source, destination, secret_values)
             prepared_files.append(destination)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

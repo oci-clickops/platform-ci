@@ -9,6 +9,7 @@ Shared GitOps workflows for multi-cloud infrastructure (OCI, Azure, and GCP).
 jobs:
   terraform:
     uses: oci-clickops/platform-ci/.github/workflows/terraform-shared.yaml@main
+    secrets: inherit
     with:
       mode: ${{ github.event_name == 'pull_request' && 'pr' || 'apply' }}
       cloud: oci
@@ -86,6 +87,12 @@ The workflow determines the configuration directory in this order:
 It then resolves to `${cloud}/${region}` (e.g., `oci/eu-frankfurt-1` or `gcp/europe-west2`) and passes all `*.json` files found there to Terraform.
 
 Terraform does not deep-merge repeated root variables across `-var-file` inputs. Keep aggregated roots in one manifest per region, for example OCI project NSGs in `oci/<region>/network/project-nsgs.json` and Google ADB-S entries in `gcp/<region>/workloads/adb.json`.
+
+**Runtime placeholder substitution**
+
+Before Terraform runs, the workflow copies JSON var-files to `${{ runner.temp }}/terraform-var-files`, excludes `ansible/` manifests, and replaces double-underscore placeholders from environment values. The checked-out manifest repository is not modified.
+
+For OCI ADB manifests, set a GitHub Actions secret named `ADB_ADMIN_PASSWORD` in the project repository and keep `admin_password` as `__ADB_ADMIN_PASSWORD__` in Git. Caller workflows must include `secrets: inherit` so the reusable workflow can read the secret. The workflow fails before planning if any unresolved `__PLACEHOLDER__` remains in Terraform var-files.
 
 **Terraform state object name**
 
@@ -175,6 +182,12 @@ These must be configured on the self-hosted runner:
 | `ARM_SUBSCRIPTION_ID` | Azure subscription ID | Azure | No |
 | `GOOGLE_CREDENTIALS` | Google service account JSON or workload identity credential JSON | Google | Yes |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to a Google ADC credentials file | Google | Yes |
+
+GitHub Actions project-repository secrets:
+
+| Secret | Description | Cloud |
+|--------|-------------|-------|
+| `ADB_ADMIN_PASSWORD` | Replaces `__ADB_ADMIN_PASSWORD__` in prepared Terraform var-files for OCI ADB creation | OCI |
 
 ### Runner Configuration
 

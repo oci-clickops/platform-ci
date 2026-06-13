@@ -129,6 +129,8 @@ def build_compute_inventory(manifest, compute_map):
     }
 
     targets = manifest.get('targets', [])
+    ansible_user = os.environ.get('COMPUTE_ANSIBLE_USER', 'opc')
+    private_key_file = os.environ.get('COMPUTE_SSH_PRIVATE_KEY_FILE', '/home/opc/.ssh/oci_vm_key')
 
     for target in targets:
         name = target.get('display_name')
@@ -142,6 +144,8 @@ def build_compute_inventory(manifest, compute_map):
         inventory['compute_instances']['hosts'][name] = {
             'ansible_host': info['private_ip'],
             'ansible_connection': 'ssh',
+            'ansible_user': ansible_user,
+            'ansible_ssh_private_key_file': private_key_file,
             'oci_ocid': info['ocid'],
             'oci_state': info['state'],
             'agent_type': manifest.get('agent_type', 'unknown'),

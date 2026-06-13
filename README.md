@@ -139,6 +139,8 @@ Recommended location: `${cloud}/${region}/ansible/<operation>.json`.
 
 Targets are matched against ADB `display_name` values found in Terraform state (`oci_database_autonomous_database` resources).
 
+For `deploy-agent`, targets are matched against compute instance `display_name` values found in Terraform state (`oci_core_instance` resources). The generated inventory connects over SSH to the instance private IP using `ansible_user=opc` and `ansible_ssh_private_key_file=/home/opc/.ssh/oci_vm_key` by default. Override these on the self-hosted runner with `COMPUTE_ANSIBLE_USER` and `COMPUTE_SSH_PRIVATE_KEY_FILE` if a project image uses a different OS user or key path.
+
 ## Authentication
 
 - **OCI**: Instance Principal (self-hosted runners)
@@ -178,6 +180,8 @@ These must be configured on the self-hosted runner:
 | `STATE_REGION` | OCI region where the state bucket lives (required) | OCI/Azure/GCP | No |
 | `REGION` | Config region folder name (used when path auto-detection or workflow input `region` is not available) | OCI/Azure/GCP | No |
 | `OCI_CLI_AUTH` | Set to `instance_principal` (needed for `oci os object get` in inventory generation) | OCI | No |
+| `COMPUTE_ANSIBLE_USER` | Optional SSH user for compute Day 2 operations; defaults to `opc` | OCI | No |
+| `COMPUTE_SSH_PRIVATE_KEY_FILE` | Optional private key path for compute Day 2 operations; defaults to `/home/opc/.ssh/oci_vm_key` | OCI | Yes |
 | `ARM_CLIENT_ID` | Service Principal client ID | Azure | Yes |
 | `ARM_CLIENT_SECRET` | Service Principal secret | Azure | Yes |
 | `ARM_TENANT_ID` | Azure tenant ID | Azure | No |

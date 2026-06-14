@@ -13,6 +13,12 @@ class AnsibleWorkflowTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("ANSIBLE_STATUS=${PIPESTATUS[0]}"), 2)
         self.assertGreaterEqual(workflow.count('exit "$ANSIBLE_STATUS"'), 2)
 
+    def test_detects_lifecycle_operations_manifests(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("lifecycle_operations", workflow)
+        self.assertNotIn("grep 'ansible'", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

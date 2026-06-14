@@ -70,10 +70,10 @@ jobs:
           elif [ "${{ github.event_name }}" = "push" ]; then
             git diff --name-only ${{ github.event.before }} ${{ github.event.after }} > $WORK_TEMP/changed.txt
           else
-            find ${{ inputs.cloud }} -path '*/ansible/*.json' -type f > $WORK_TEMP/changed.txt
+            find ${{ inputs.cloud }} -path '*/lifecycle_operations/*.json' -type f > $WORK_TEMP/changed.txt
           fi
 
-          OPERATION_FILE=$(grep '${{ inputs.cloud }}' $WORK_TEMP/changed.txt | grep 'ansible' | grep '.json' | head -1)
+          OPERATION_FILE=$(grep '^${{ inputs.cloud }}/' $WORK_TEMP/changed.txt | grep '/lifecycle_operations/' | grep '\.json$' | head -1)
 
           if [ -z "$OPERATION_FILE" ]; then
             echo "❌ No Ansible operation files found"

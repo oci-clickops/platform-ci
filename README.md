@@ -55,7 +55,7 @@ These workflows are designed to be called from a “manifest” repo that contai
 ├── oci/
 │   └── eu-frankfurt-1/
 │       ├── *.json                 # Terraform var-files (JSON)
-│       └── ansible/
+│       └── lifecycle_operations/
 │           └── adb-lifecycle.json # Operation manifest(s)
 ├── azure/
 │   └── westeurope/
@@ -90,7 +90,7 @@ Terraform does not deep-merge repeated root variables across `-var-file` inputs.
 
 **Runtime secret placeholder substitution**
 
-Before Terraform runs, the workflow copies JSON var-files to `${{ runner.temp }}/terraform-var-files`, excludes `ansible/` manifests, and replaces double-underscore placeholders from environment values or inherited GitHub Actions secrets. The checked-out manifest repository is not modified.
+Before Terraform runs, the workflow copies JSON var-files to `${{ runner.temp }}/terraform-var-files`, excludes `lifecycle_operations/` manifests, and replaces double-underscore placeholders from environment values or inherited GitHub Actions secrets. The checked-out manifest repository is not modified.
 
 For OCI ADB manifests, use one secret placeholder per database when passwords should differ, for example `__ADB_PROD_PROJ1_01_ADMIN_PASSWORD__` in Git and a project-repository secret named `ADB_PROD_PROJ1_01_ADMIN_PASSWORD`. Caller workflows must include `secrets: inherit` so the reusable workflow can read the secret. The workflow fails before planning if any unresolved `__PLACEHOLDER__` remains in Terraform var-files.
 
@@ -119,10 +119,10 @@ Runs Day-2 operations using Ansible, driven by a JSON “operation manifest”.
 When `operation_file` is empty, the workflow picks the first changed file matching:
 
 - path contains `${cloud}`
-- path contains `ansible`
+- path contains `lifecycle_operations`
 - filename ends with `.json`
 
-Recommended location: `${cloud}/${region}/ansible/<operation>.json`.
+Recommended location: `${cloud}/${region}/lifecycle_operations/<operation>.json`.
 
 **Operation JSON format**
 

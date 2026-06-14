@@ -74,7 +74,7 @@ def terraform_json_files(config_dir: Path) -> list[Path]:
     return sorted(
         path
         for path in config_dir.rglob("*.json")
-        if "ansible" not in path.relative_to(config_dir).parts
+        if not {"ansible", "lifecycle_operations"}.intersection(path.relative_to(config_dir).parts)
     )
 
 

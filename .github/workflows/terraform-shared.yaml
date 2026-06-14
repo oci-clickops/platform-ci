@@ -275,8 +275,8 @@ jobs:
           CONFIG_DIR="${{ github.workspace }}/${{ steps.config.outputs.config_subpath }}"
           PREPARED_VAR_DIR="${{ runner.temp }}/terraform-var-files"
 
-          # Exclude ansible/ directories - those JSON files are for Ansible,
-          # not Terraform. Prepare copies under runner.temp so secret-backed
+          # Exclude lifecycle_operations/ directories - those JSON files are
+          # for Ansible, not Terraform. Prepare copies under runner.temp so secret-backed
           # placeholders never modify the checked-out manifest repository.
           VAR_FILES=$(python3 platform-ci/scripts_python/prepare_var_files.py "$CONFIG_DIR" "$PREPARED_VAR_DIR")
           echo "var_files=$VAR_FILES" >> $GITHUB_OUTPUT

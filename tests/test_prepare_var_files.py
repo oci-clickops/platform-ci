@@ -16,7 +16,7 @@ class PrepareVarFilesTests(unittest.TestCase):
             root = Path(tmp)
             config_dir = root / "oci" / "eu-frankfurt-1"
             (config_dir / "database").mkdir(parents=True)
-            (config_dir / "ansible").mkdir()
+            (config_dir / "lifecycle_operations").mkdir()
             output_dir = root / "prepared"
 
             source_file = config_dir / "database" / "database.json"
@@ -34,7 +34,7 @@ class PrepareVarFilesTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (config_dir / "ansible" / "adb-lifecycle.json").write_text("{}", encoding="utf-8")
+            (config_dir / "lifecycle_operations" / "adb-lifecycle.json").write_text("{}", encoding="utf-8")
 
             env = os.environ.copy()
             env["ADB_ADMIN_PASSWORD"] = "ExampleSecret#2026"
@@ -51,7 +51,7 @@ class PrepareVarFilesTests(unittest.TestCase):
             self.assertIn("-var-file", result.stdout)
             prepared_file = output_dir / "database" / "database.json"
             self.assertTrue(prepared_file.exists())
-            self.assertFalse((output_dir / "ansible" / "adb-lifecycle.json").exists())
+            self.assertFalse((output_dir / "lifecycle_operations" / "adb-lifecycle.json").exists())
             self.assertEqual(
                 json.loads(prepared_file.read_text(encoding="utf-8"))[
                     "autonomous_databases_configuration"

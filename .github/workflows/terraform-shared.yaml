@@ -330,8 +330,10 @@ jobs:
         if: inputs.mode == 'apply'
         shell: bash
         run: |
-          terraform -chdir=ORCH apply -auto-approve -no-color \
-            ${{ steps.vars.outputs.extra }} ${{ steps.vars.outputs.var_files }}
+          # Apply the exact binary plan produced by the preceding plan step.
+          # Passing variables here would make Terraform create a second,
+          # potentially different implicit plan.
+          terraform -chdir=ORCH apply -auto-approve -no-color tfplan.binary
           echo "✅ Apply completed"
 
       # =====================================================================

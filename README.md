@@ -88,6 +88,8 @@ It then resolves to `${cloud}/${region}` (e.g., `oci/eu-frankfurt-1` or `gcp/eur
 
 Terraform does not deep-merge repeated root variables across `-var-file` inputs. Keep aggregated roots in one manifest per region, for example OCI project NSGs in `oci/<region>/network/project-nsgs.json` and Google ADB-S entries in `gcp/<region>/workloads/adb.json`.
 
+In `apply` mode, the workflow first creates `tfplan.binary` from the merged commit and then applies that exact saved plan. It does not pass the variable files to `terraform apply`, because doing so would generate a second implicit plan that could differ from the plan shown earlier in the job.
+
 **Runtime secret placeholder substitution**
 
 Before Terraform runs, the workflow copies JSON var-files to `${{ runner.temp }}/terraform-var-files`, excludes `lifecycle_operations/` manifests, and replaces double-underscore placeholders from environment values or inherited GitHub Actions secrets. The checked-out manifest repository is not modified.
